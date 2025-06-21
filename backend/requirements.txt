@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+stellar-sdk
+soroban-rpc-client
+requests
+python-multipart
+python-dotenv 
