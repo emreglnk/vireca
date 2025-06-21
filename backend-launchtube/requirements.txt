@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+stellar-sdk
+soroban-rpc-client
+requests
+python-multipart
+python-dotenv
+pydantic
+httpx
+aiofiles
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart 

@@ -1,3 +1,5 @@
+*.ignore
+
 # Çevre değişkenleri ve hassas bilgiler
 .env
 .env.local
