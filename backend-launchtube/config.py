@@ -82,17 +82,29 @@ LAUNCHTUBE_CONSTANTS = {
     },
     
     "NETWORK_CONFIG": {
+        "devnet": {
+            "name": "Stellar Devnet",
+            "rpc_url": "https://rpc-devnet.stellar.org:443",
+            "network_passphrase": "Standalone Network ; February 2017",
+            "explorer_url": "https://stellar.expert/explorer/devnet",
+            "friendbot_url": "https://friendbot-devnet.stellar.org",
+            "description": "Development network - Hızlı reset, geliştirme için ideal"
+        },
         "testnet": {
             "name": "Stellar Testnet",
             "rpc_url": "https://soroban-testnet.stellar.org:443",
             "network_passphrase": "Test SDF Network ; September 2015",
-            "explorer_url": "https://stellar.expert/explorer/testnet"
+            "explorer_url": "https://stellar.expert/explorer/testnet",
+            "friendbot_url": "https://friendbot.stellar.org",
+            "description": "Test network - Stabil test ortamı"
         },
         "mainnet": {
             "name": "Stellar Mainnet",
             "rpc_url": "https://soroban-mainnet.stellar.org:443",
             "network_passphrase": "Public Global Stellar Network ; September 2015",
-            "explorer_url": "https://stellar.expert/explorer/public"
+            "explorer_url": "https://stellar.expert/explorer/public",
+            "friendbot_url": None,
+            "description": "Production network - Gerçek XLM gerektirir"
         }
     },
     
@@ -141,6 +153,15 @@ def get_config() -> LaunchtubeConfig:
 def get_network_config(network: str = "testnet") -> Dict[str, Any]:
     """Ağ yapılandırmasını döndürür"""
     return LAUNCHTUBE_CONSTANTS["NETWORK_CONFIG"].get(network, LAUNCHTUBE_CONSTANTS["NETWORK_CONFIG"]["testnet"])
+
+def get_friendbot_url(network: str = "testnet") -> str:
+    """Network için friendbot URL'sini döndürür"""
+    config = get_network_config(network)
+    return config.get("friendbot_url", "https://friendbot.stellar.org")
+
+def is_development_network(network: str) -> bool:
+    """Network'ün development network olup olmadığını kontrol eder"""
+    return network in ["devnet", "testnet"]
 
 def is_supported_file_type(content_type: str) -> bool:
     """Dosya tipinin desteklenip desteklenmediğini kontrol eder"""
