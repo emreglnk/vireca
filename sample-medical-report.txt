@@ -1,0 +1,13 @@
+Sample Medical Report - Blood Test Results
+
+Patient: Test Patient
+Date: Sat Jun 21 18:09:56 +03 2025
+Doctor: Dr. Smith
+
+Test Results:
+- Hemoglobin: 14.2 g/dL (Normal)
+- White Blood Cells: 7,200/μL (Normal)
+- Platelets: 250,000/μL (Normal)
+
+Conclusion: All values within normal range.
+

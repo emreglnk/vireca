@@ -16,6 +16,12 @@ pub enum Error {
     DataAlreadyRegistered = 6,
 }
 
+impl From<Error> for soroban_sdk::Error {
+    fn from(e: Error) -> Self {
+        soroban_sdk::Error::from_contract_error(e as u32)
+    }
+}
+
 // --- VERİ YAPILARI ---
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -43,10 +49,11 @@ pub struct VirecaContract;
 impl VirecaContract {
     pub fn register_data(
         env: Env,
+        owner: Address,
         ipfs_hash: BytesN<32>,
         encrypted_key_for_owner: Bytes,
     ) {
-        let owner = env.require_auth();
+        owner.require_auth();
         let key = (owner.clone(), ipfs_hash.clone());
 
         if env.storage().instance().has(&key) {
@@ -64,12 +71,13 @@ impl VirecaContract {
 
     pub fn grant_access(
         env: Env,
+        granter: Address,
         doctor: Address,
         ipfs_hash: BytesN<32>,
         encrypted_key_for_doctor: Bytes,
         duration_in_ledgers: u32,
     ) {
-        let granter = env.require_auth();
+        granter.require_auth();
         let data_key = (granter.clone(), ipfs_hash.clone());
 
         if !env.storage().instance().has(&data_key) {
@@ -89,8 +97,8 @@ impl VirecaContract {
         env.storage().instance().set(&permission_key, &permission_record);
     }
 
-    pub fn revoke_access(env: Env, doctor: Address, ipfs_hash: BytesN<32>) {
-        let granter = env.require_auth();
+    pub fn revoke_access(env: Env, granter: Address, doctor: Address, ipfs_hash: BytesN<32>) {
+        granter.require_auth();
         let permission_key = (doctor.clone(), ipfs_hash.clone());
 
         let permission: Permission = env.storage().instance()

@@ -2,18 +2,19 @@ import os
 import requests
 import base64
 import httpx
+import json
 from datetime import datetime, timedelta
 from typing import Optional, List
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Depends, status
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Body, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from jose import JWTError, jwt
 
-from soroban_rpc_client import Server
-from stellar_sdk import Keypair, TransactionBuilder
-from stellar_sdk.xdr import SCVal
+from stellar_sdk import Keypair, TransactionBuilder, SorobanServer
+from stellar_sdk.scval import to_bytes, to_address, to_uint32
+from crypto_utils import VireacaCrypto
 
 # .env dosyasındaki ayarları yükle
 load_dotenv()
@@ -54,8 +55,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-server = Server(RPC_URL)
+server = SorobanServer(RPC_URL)
 security = HTTPBearer()
+
+# In-memory storage for uploaded files (In production, use a database)
+uploaded_files = {}  # {user_public_key: [file_info_dict, ...]}
+
+# In-memory storage for data keys in test mode (In production, use a database)
+test_data_keys = {}  # {ipfs_hash: data_key_bytes}
 
 # --- API Modelleri (Pydantic) ---
 class LaunchtubeUser(BaseModel):
@@ -112,6 +119,18 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
+        # Test mode için mock token kontrolü
+        if credentials.credentials.startswith("mock_token_"):
+            # Mock token formatı: mock_token_patient_timestamp veya mock_token_doctor_timestamp
+            parts = credentials.credentials.split("_")
+            if len(parts) >= 3:
+                wallet_type = parts[2]
+                if wallet_type == "patient":
+                    return WALLETS["patient"] if "WALLETS" in globals() else "GA5HNMXP4XZL634C3DXKU6AM5WAJ6OKMOIKZ2R3SN22WZXRKCS2XA4MZ"
+                elif wallet_type == "doctor":
+                    return WALLETS["doctor"] if "WALLETS" in globals() else "GDOCTOREXAMPLEADDRESS1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        
+        # Gerçek JWT doğrulama
         payload = jwt.decode(credentials.credentials, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         public_key: str = payload.get("sub")
         if public_key is None:
@@ -156,10 +175,11 @@ async def verify_launchtube_user(public_key: str) -> LaunchtubeUser:
             detail="Launchtube servisi geçici olarak kullanılamıyor"
         )
 
-def build_and_prepare_transaction(source_public_key: str, contract_function: str, parameters: list[SCVal]) -> str:
+def build_and_prepare_transaction(source_public_key: str, contract_function: str, parameters: list) -> str:
     """Tekrar eden işlem oluşturma ve hazırlama mantığını soyutlar."""
     try:
-        source_account = server.get_account(source_public_key)
+        # SorobanServer'da load_account kullanılıyor (get_account değil)
+        source_account = server.load_account(source_public_key)
         source_keypair = Keypair.from_public_key(source_public_key)
 
         tx_builder = TransactionBuilder(
@@ -183,24 +203,120 @@ def build_and_prepare_transaction(source_public_key: str, contract_function: str
         )
 
 async def upload_to_ipfs_with_metadata(file_content: bytes, filename: str, metadata: dict = None) -> str:
-    """IPFS'e dosya ve metadata yükler"""
+    """IPFS'e dosya ve metadata yükler - Pinata API v3 uyumlu"""
     try:
-        files = {"file": (filename, file_content)}
+        # Pinata API güncel format kontrolü
+        if not PINATA_JWT:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="PINATA_JWT environment variable is not set"
+            )
         
+        # Basit multipart form data (v3 API ile uyumlu)
+        files = {
+            "file": (filename, file_content, "application/octet-stream")
+        }
+        
+        # Metadata formatting (yeni API formatı)
+        data = {}
         if metadata:
-            files["pinataMetadata"] = (None, str(metadata))
-        
-        headers = {"Authorization": f"Bearer {PINATA_JWT}"}
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.post(IPFS_PIN_URL, files=files, headers=headers)
-            response.raise_for_status()
+            # Pinata v3 metadata format
+            pinata_metadata = {
+                "name": filename,
+                "keyvalues": {
+                    # Sadece string değerleri metadata olarak ekle
+                    str(k): str(v) for k, v in metadata.items() if v is not None
+                }
+            }
+            data["pinataMetadata"] = json.dumps(pinata_metadata)
             
-        return response.json()["IpfsHash"]
-    except httpx.RequestError as e:
+            # CID version (optional)
+            data["pinataOptions"] = json.dumps({"cidVersion": 1})
+        
+        headers = {
+            "Authorization": f"Bearer {PINATA_JWT}"
+        }
+        
+        # Debug için request bilgilerini yazdır
+        print(f"📤 Uploading to IPFS: {filename} ({len(file_content)} bytes)")
+        print(f"🔑 Auth header: Bearer {PINATA_JWT[:20]}...")
+        if metadata:
+            print(f"📋 Metadata keys ({len(metadata)}): {list(metadata.keys())}")
+        
+        # Timeout ve retry ile daha güvenilir upload
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                IPFS_PIN_URL, 
+                files=files, 
+                data=data, 
+                headers=headers
+            )
+            
+            # Detailed response debugging
+            print(f"📥 Response Status: {response.status_code}")
+            if response.status_code != 200:
+                print(f"❌ Response Body: {response.text}")
+                print(f"📋 Request Headers: {headers}")
+                print(f"📋 Request URL: {IPFS_PIN_URL}")
+                
+            response.raise_for_status()
+            result = response.json()
+            
+        print(f"✅ IPFS Upload Success: {result.get('IpfsHash', 'Unknown')}")
+        return result["IpfsHash"]
+        
+    except httpx.HTTPStatusError as e:
+        error_detail = f"HTTP {e.response.status_code}: {e.response.text}"
+        print(f"❌ IPFS Upload HTTP Error: {error_detail}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"IPFS Upload HTTP Error: {error_detail}"
+        )
+    except httpx.TimeoutException:
+        print(f"⏰ IPFS Upload Timeout")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="IPFS Upload Timeout - file too large or network issue"
+        )
+    except Exception as e:
+        print(f"💥 IPFS Upload General Error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"IPFS Upload Error: {str(e)}"
+        )
+
+async def upload_to_ipfs_simple(file_content: bytes, filename: str) -> str:
+    """IPFS'e sadece dosya yükler (metadata olmadan)"""
+    try:
+        # Basit file upload - metadata yok
+        files = {
+            "file": (filename, file_content, "application/octet-stream")
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {PINATA_JWT}"
+        }
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                IPFS_PIN_URL, 
+                files=files, 
+                headers=headers
+            )
+            
+            if response.status_code != 200:
+                print(f"Pinata Simple Upload Error: {response.status_code}")
+                print(f"Response: {response.text}")
+                
+            response.raise_for_status()
+            result = response.json()
+            
+        return result["IpfsHash"]
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"IPFS Simple Upload Error: {str(e)}"
         )
 
 # --- API ENDPOINTS ---
@@ -226,8 +342,10 @@ async def authenticate_with_launchtube(request: LaunchtubeAuthRequest):
 
 @app.post("/prepare/register-data", summary="Launchtube kullanıcısı için veri kaydı hazırlar")
 async def prepare_register_data(
-    request: PrepareRegisterRequest,
     file: UploadFile = File(...),
+    owner_public_key: str = Form(...),
+    patient_signature: str = Form(..., description="Patient signature for 'Vireca_key_v1'"),
+    metadata: str = Form(None),
     current_user: str = Depends(verify_token)
 ):
     """Launchtube kullanıcısı için sağlık verisi kaydı hazırlar"""
@@ -240,93 +358,372 @@ async def prepare_register_data(
         )
     
     # Kullanıcı doğrulama
-    if current_user != request.owner_public_key:
+    if current_user != owner_public_key:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Sadece kendi verilerinizi kaydedebilirsiniz"
         )
     
-    # Launchtube kullanıcısını doğrula
-    user = await verify_launchtube_user(request.owner_public_key)
+    # Test mode için mock user veya gerçek Launchtube kullanıcısını doğrula
+    try:
+        user = await verify_launchtube_user(owner_public_key)
+    except HTTPException:
+        # Test mode için mock user oluştur
+        user = LaunchtubeUser(
+            public_key=owner_public_key,
+            username=f"test_user_{owner_public_key[:8]}",
+            email="test@example.com"
+        )
     
     # Dosyayı oku
     file_content = await file.read()
     
-    # Metadata hazırla
-    metadata = {
-        "uploader": user.username or request.owner_public_key,
+    # === ENCRYPTION FLOW ===
+    crypto = VireacaCrypto()
+    
+    # 1. Generate AES-256 data key
+    data_key = crypto.generate_data_key()
+    
+    # 2. Encrypt medical data
+    encrypted_data = crypto.encrypt_data(file_content, data_key)
+    
+    # 3. Derive patient key from signature
+    try:
+        # Test mode için mock signature kontrolü
+        if patient_signature.startswith("mock_"):
+            # Mock signature için deterministic key oluştur
+            patient_key = crypto.derive_patient_key_from_mock(patient_signature)
+        else:
+            # Gerçek signature doğrulama
+            if not VireacaCrypto.verify_stellar_signature(
+                owner_public_key, 
+                VireacaCrypto.FIXED_SIGNATURE_MESSAGE, 
+                patient_signature
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid patient signature for key derivation"
+                )
+            patient_key = crypto.derive_patient_key(patient_signature)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Signature processing error: {str(e)}"
+        )
+    
+    # 4. Encrypt data key for patient
+    encrypted_data_key_for_patient = crypto.encrypt_data_key_for_patient(data_key, patient_key)
+    
+    # Metadata parse et ve hazırla
+    parsed_metadata = {}
+    if metadata:
+        try:
+            parsed_metadata = json.loads(metadata)
+        except json.JSONDecodeError:
+            parsed_metadata = {}
+    
+    # Pinata metadata limit: maksimum 10 key-value pair
+    base_metadata = {
         "filename": file.filename,
-        "content_type": file.content_type,
-        "upload_date": datetime.utcnow().isoformat(),
         "platform": "launchtube",
-        **(request.metadata or {})
+        "encrypted": "true",  # Boolean'ı string'e çevir
+        "upload_date": datetime.utcnow().strftime("%Y-%m-%d"),  # Kısa format
     }
     
-    # IPFS'e yükle
-    ipfs_hash = await upload_to_ipfs_with_metadata(file_content, file.filename, metadata)
+    # Kullanıcıdan gelen metadata'dan sadece ilk 6 tanesini al (4+6=10)
+    if parsed_metadata:
+        limited_metadata = {}
+        count = 0
+        for key, value in parsed_metadata.items():
+            if count < 6:  # 4 base + 6 user = 10 total
+                limited_metadata[str(key)] = str(value)
+                count += 1
+            else:
+                break
+        base_metadata.update(limited_metadata)
+    
+    metadata_dict = base_metadata
+    
+    # Gerçek IPFS upload - encrypted data'yı yükle
+    try:
+        ipfs_hash = await upload_to_ipfs_with_metadata(
+            encrypted_data, 
+            f"encrypted_{file.filename}",
+            metadata_dict
+        )
+    except HTTPException as e:
+        # İlk denemede metadata ile hata aldıysak, metadata olmadan dene
+        if "400" in str(e.detail) or "key values" in str(e.detail).lower():
+            try:
+                print("🔄 Metadata limitini aştı - metadata olmadan deneniyor...")
+                ipfs_hash = await upload_to_ipfs_simple(
+                    encrypted_data, 
+                    f"encrypted_{file.filename}"
+                )
+                print("✅ Metadata olmadan upload başarılı!")
+            except Exception as e2:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"IPFS upload failed both with and without metadata: {str(e2)}"
+                )
+        else:
+            raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"IPFS upload failed: {str(e)}"
+        )
     
     # Smart contract parametrelerini hazırla
     ipfs_hash_bytes = ipfs_hash.encode('utf-8')
-    encrypted_key_bytes = base64.b64decode(request.encrypted_key_for_owner)
+    encrypted_key_bytes = base64.b64decode(encrypted_data_key_for_patient)
     
     params = [
-        SCVal.from_bytes(ipfs_hash_bytes),
-        SCVal.from_bytes(encrypted_key_bytes),
+        to_bytes(ipfs_hash_bytes),
+        to_bytes(encrypted_key_bytes),
     ]
 
-    unsigned_xdr = build_and_prepare_transaction(
-        request.owner_public_key, 
-        "register_data", 
-        params
-    )
+    # Test mode için mock transaction XDR, production'da gerçek transaction building
+    if patient_signature.startswith("mock_"):
+        # Mock transaction XDR (test mode)
+        unsigned_xdr = f"mock_xdr_{hash(ipfs_hash + owner_public_key)}"
+    else:
+        # Gerçek transaction building
+        unsigned_xdr = build_and_prepare_transaction(
+            owner_public_key, 
+            "register_data", 
+            params
+        )
+    
+    # Dosya bilgilerini memory'de sakla (production'da database kullan)
+    file_info = {
+        "id": f"file_{hash(ipfs_hash)}",
+        "filename": file.filename,
+        "original_filename": file.filename,
+        "encrypted_filename": f"encrypted_{file.filename}",
+        "ipfs_hash": ipfs_hash,
+        "ipfs_url": f"{IPFS_GATEWAY_URL}{ipfs_hash}",
+        "file_size": len(file_content),
+        "encrypted_size": len(encrypted_data),
+        "content_type": file.content_type,
+        "upload_date": datetime.utcnow().isoformat(),
+        "metadata": metadata_dict,
+        "owner_public_key": owner_public_key,
+        "encrypted_data_key": encrypted_data_key_for_patient,
+        "status": "uploaded",
+        "blockchain_status": "pending"
+    }
+    
+    # User'ın dosya listesine ekle
+    if owner_public_key not in uploaded_files:
+        uploaded_files[owner_public_key] = []
+    uploaded_files[owner_public_key].append(file_info)
+    
+    # Test mode için data key'i sakla
+    if patient_signature.startswith("mock_"):
+        test_data_keys[ipfs_hash] = data_key
     
     return {
         "unsigned_xdr": unsigned_xdr,
         "ipfs_hash": ipfs_hash,
         "ipfs_url": f"{IPFS_GATEWAY_URL}{ipfs_hash}",
-        "metadata": metadata,
-        "user": user
+        "metadata": metadata_dict,
+        "user": user,
+        "file_info": file_info
     }
 
 @app.post("/prepare/grant-access", summary="Launchtube doktoruna erişim izni verme")
 async def prepare_grant_access(
-    request: PrepareGrantRequest,
+    granter_public_key: str = Form(...),
+    doctor_public_key: str = Form(...),
+    ipfs_hash: str = Form(...),
+    patient_signature: str = Form(..., description="Patient signature for 'Vireca_key_v1'"),
+    patient_encrypted_data_key: str = Form(..., description="Patient's encrypted data key from blockchain"),
+    duration_in_ledgers: int = Form(..., gt=0),
+    access_reason: str = Form(None),
     current_user: str = Depends(verify_token)
 ):
     """Launchtube doktoruna sağlık verisi erişim izni verme"""
     
     # Kullanıcı doğrulama
-    if current_user != request.granter_public_key:
+    if current_user != granter_public_key:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Sadece kendi verilerinize erişim izni verebilirsiniz"
         )
     
-    # Hasta ve doktor bilgilerini doğrula
-    granter = await verify_launchtube_user(request.granter_public_key)
-    doctor = await verify_launchtube_user(request.doctor_public_key)
+    # === DOCTOR SHARING CRYPTO FLOW ===
+    crypto = VireacaCrypto()
     
-    # Smart contract parametrelerini hazırla
-    params = [
-        SCVal.from_address(request.doctor_public_key),
-        SCVal.from_bytes(request.ipfs_hash.encode('utf-8')),
-        SCVal.from_bytes(base64.b64decode(request.encrypted_key_for_doctor)),
-        SCVal.from_u32(request.duration_in_ledgers)
-    ]
+    # 1. Derive patient key from signature
+    try:
+        # Test mode için mock signature kontrolü
+        if patient_signature.startswith("mock_"):
+            patient_key = crypto.derive_patient_key_from_mock(patient_signature)
+        else:
+            # Gerçek signature doğrulama
+            if not VireacaCrypto.verify_stellar_signature(
+                granter_public_key, 
+                VireacaCrypto.FIXED_SIGNATURE_MESSAGE, 
+                patient_signature
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid patient signature for key derivation"
+                )
+            patient_key = crypto.derive_patient_key(patient_signature)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Signature processing error: {str(e)}"
+        )
     
-    unsigned_xdr = build_and_prepare_transaction(
-        request.granter_public_key, 
-        "grant_access", 
-        params
-    )
+    # 2. Decrypt data key with patient key
+    try:
+        # Test mode için stored data key kullan
+        if patient_signature.startswith("mock_"):
+            # Test mode: use the stored real data key for this IPFS hash
+            if ipfs_hash in test_data_keys:
+                data_key = test_data_keys[ipfs_hash]
+            else:
+                # Fallback to mock data key if not found
+                data_key = b"mock_data_key_32_bytes_for_test_!"
+        else:
+            data_key = crypto.decrypt_data_key_for_patient(patient_encrypted_data_key, patient_key)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to decrypt data key: {str(e)}"
+        )
+    
+    # 3. Re-encrypt data key for doctor
+    if patient_signature.startswith("mock_"):
+        # Mock encrypted data key for doctor (test mode)
+        encrypted_data_key_for_doctor = f"mock_doctor_key_{hash(doctor_public_key)}"
+    else:
+        encrypted_data_key_for_doctor = crypto.encrypt_data_key_for_doctor(data_key, doctor_public_key)
+    
+    # Test mode için mock user veya gerçek Launchtube kullanıcılarını doğrula
+    try:
+        granter = await verify_launchtube_user(granter_public_key)
+    except HTTPException:
+        granter = LaunchtubeUser(
+            public_key=granter_public_key,
+            username=f"test_patient_{granter_public_key[:8]}",
+            email="patient@example.com"
+        )
+    
+    try:
+        doctor = await verify_launchtube_user(doctor_public_key)
+    except HTTPException:
+        doctor = LaunchtubeUser(
+            public_key=doctor_public_key,
+            username=f"test_doctor_{doctor_public_key[:8]}",
+            email="doctor@example.com"
+        )
+    
+    # Test mode için mock transaction XDR, production'da gerçek transaction building
+    if patient_signature.startswith("mock_"):
+        # Mock transaction XDR (test mode)
+        unsigned_xdr = f"mock_grant_xdr_{hash(granter_public_key + doctor_public_key + ipfs_hash)}"
+    else:
+        # Smart contract parametrelerini hazırla
+        params = [
+            to_address(doctor_public_key),
+            to_bytes(ipfs_hash.encode('utf-8')),
+            to_bytes(base64.b64decode(encrypted_data_key_for_doctor)),
+            to_uint32(duration_in_ledgers)
+        ]
+        
+        unsigned_xdr = build_and_prepare_transaction(
+            granter_public_key, 
+            "grant_access", 
+            params
+        )
     
     return {
         "unsigned_xdr": unsigned_xdr,
         "granter": granter,
         "doctor": doctor,
-        "duration_hours": request.duration_in_ledgers * 5 / 3600,  # Yaklaşık saat cinsinden
-        "access_reason": request.access_reason
+        "duration_hours": duration_in_ledgers * 5 / 3600,  # Yaklaşık saat cinsinden
+        "access_reason": access_reason,
+        "encrypted_data_key_for_doctor": encrypted_data_key_for_doctor,
+        "crypto_status": "Data key successfully re-encrypted for doctor"
     }
+
+@app.post("/doctor/decrypt-data", summary="Doctor'ın encrypted data'yı decrypt etmesi")
+async def doctor_decrypt_data(
+    doctor_public_key: str = Form(...),
+    ipfs_hash: str = Form(...),
+    encrypted_data_key_for_doctor: str = Form(..., description="Doctor's encrypted data key from permission"),
+    current_user: str = Depends(verify_token)
+):
+    """Doctor permission'ı ile encrypted data'yı decrypt eder"""
+    
+    # Kullanıcı doğrulama
+    if current_user != doctor_public_key:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sadece kendi verilerinize erişebilirsiniz"
+        )
+    
+    # === DOCTOR ACCESS CRYPTO FLOW ===
+    crypto = VireacaCrypto()
+    
+    try:
+        # 1. Decrypt data key with doctor's key
+        # Test mode için stored data key kullan
+        if encrypted_data_key_for_doctor.startswith("mock_"):
+            # Test mode: use the stored real data key for this IPFS hash
+            if ipfs_hash in test_data_keys:
+                data_key = test_data_keys[ipfs_hash]
+            else:
+                # Fallback to mock data key if not found
+                data_key = b"mock_data_key_32_bytes_for_test_!"
+        else:
+            data_key = crypto.decrypt_data_key_for_doctor(encrypted_data_key_for_doctor, doctor_public_key)
+        
+        # 2. Download encrypted data from IPFS
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                ipfs_response = await client.get(f"{IPFS_GATEWAY_URL}{ipfs_hash}")
+                ipfs_response.raise_for_status()
+                encrypted_data = ipfs_response.content
+                
+                if not encrypted_data:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="IPFS data not found or empty"
+                    )
+                    
+            except httpx.TimeoutException:
+                raise HTTPException(
+                    status_code=status.HTTP_408_REQUEST_TIMEOUT,
+                    detail="IPFS gateway timeout"
+                )
+            except httpx.HTTPStatusError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"IPFS data not found: {e.response.status_code}"
+                )
+        
+        # 3. Decrypt medical data
+        decrypted_data = crypto.decrypt_data(encrypted_data, data_key)
+        
+        return {
+            "status": "success",
+            "ipfs_hash": ipfs_hash,
+            "data_size": len(decrypted_data),
+            "decrypted_data": base64.b64encode(decrypted_data).decode('utf-8'),
+            "crypto_status": "Data successfully decrypted for doctor access",
+            "access_time": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to decrypt data: {str(e)}"
+        )
 
 @app.post("/prepare/revoke-access", summary="Launchtube doktorunun erişim iznini iptal etme")
 async def prepare_revoke_access(
@@ -347,8 +744,8 @@ async def prepare_revoke_access(
     doctor = await verify_launchtube_user(request.doctor_public_key)
     
     params = [
-        SCVal.from_address(request.doctor_public_key),
-        SCVal.from_bytes(request.ipfs_hash.encode('utf-8')),
+        to_address(request.doctor_public_key),
+        to_bytes(request.ipfs_hash.encode('utf-8')),
     ]
     
     unsigned_xdr = build_and_prepare_transaction(
@@ -422,6 +819,14 @@ async def submit_transaction(
 async def health_check():
     """API ve bağlantı durumunu kontrol eder"""
     try:
+        # Environment variables kontrolü
+        env_status = {
+            "pinata_jwt": "configured" if PINATA_JWT else "missing",
+            "contract_id": "configured" if CONTRACT_ID else "missing",
+            "rpc_url": "configured" if RPC_URL else "missing",
+            "launchtube_api_key": "configured" if LAUNCHTUBE_API_KEY else "missing"
+        }
+        
         # Stellar ağı bağlantısını test et
         stellar_status = "connected"
         try:
@@ -445,6 +850,7 @@ async def health_check():
         return {
             "status": "healthy",
             "timestamp": datetime.utcnow().isoformat(),
+            "environment": env_status,
             "services": {
                 "stellar_network": stellar_status,
                 "launchtube_platform": launchtube_status,
@@ -458,6 +864,109 @@ async def health_check():
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Sağlık kontrolü başarısız: {str(e)}"
         )
+
+@app.post("/test-upload")
+async def test_upload(
+    file: UploadFile = File(...),
+    test_field: str = Form(...),
+    current_user: str = Depends(verify_token)
+):
+    """Test endpoint for debugging upload issues"""
+    return {
+        "message": "Test upload success",
+        "filename": file.filename,
+        "test_field": test_field,
+        "current_user": current_user,
+        "file_size": file.size
+    }
+
+@app.get("/files/my-files", summary="Kullanıcının yüklediği dosyaları listele")
+async def get_my_files(current_user: str = Depends(verify_token)):
+    """Kullanıcının yüklediği dosyaları listeler"""
+    try:
+        user_files = uploaded_files.get(current_user, [])
+        
+        return {
+            "status": "success",
+            "files": user_files,
+            "total_files": len(user_files),
+            "user": current_user
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Dosyalar listelenirken hata oluştu: {str(e)}"
+        )
+
+@app.get("/files/{file_id}", summary="Belirli bir dosyanın detaylarını al")
+async def get_file_details(
+    file_id: str,
+    current_user: str = Depends(verify_token)
+):
+    """Belirli bir dosyanın detaylarını getirir"""
+    try:
+        user_files = uploaded_files.get(current_user, [])
+        
+        for file_info in user_files:
+            if file_info["id"] == file_id:
+                return {
+                    "status": "success",
+                    "file": file_info
+                }
+        
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dosya bulunamadı"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Dosya detayları alınırken hata oluştu: {str(e)}"
+        )
+
+@app.get("/files", summary="Tüm dosyaları listele (admin/debug)")
+async def get_all_files():
+    """Tüm yüklenen dosyaları listeler (debug için)"""
+    return {
+        "status": "success",
+        "all_files": uploaded_files,
+        "total_users": len(uploaded_files),
+        "total_files": sum(len(files) for files in uploaded_files.values())
+    }
+
+@app.get("/test-pinata")
+async def test_pinata():
+    """Test Pinata API connection"""
+    try:
+        headers = {"Authorization": f"Bearer {PINATA_JWT}"}
+        
+        async with httpx.AsyncClient() as client:
+            # Test Pinata authentication
+            response = await client.get(
+                "https://api.pinata.cloud/data/testAuthentication",
+                headers=headers
+            )
+            
+        if response.status_code == 200:
+            return {
+                "status": "success",
+                "message": "Pinata authentication successful",
+                "pinata_response": response.json()
+            }
+        else:
+            return {
+                "status": "error",
+                "message": f"Pinata auth failed: {response.status_code}",
+                "response": response.text
+            }
+            
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Pinata test failed: {str(e)}"
+        }
 
 @app.get("/")
 def read_root():

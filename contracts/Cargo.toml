@@ -12,10 +12,6 @@ soroban-sdk = "22.0.0"
 [features]
 testutils = ["soroban-sdk/testutils"]
 
-[[bin]]
-name = "vireca-contract"
-path = "src/main.rs"
-
 [profile.release]
 opt-level = "z"
 overflow-checks = true
