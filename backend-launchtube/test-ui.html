@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vireca Testnet Test UI</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+        }
+        
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+        }
+        
+        .status-bar {
+            background: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .status-item {
+            display: inline-block;
+            margin-right: 20px;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+        
+        .status-connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .panel {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .panel h2 {
+            margin-top: 0;
+            color: #667eea;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        
+        .file-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+        }
+        
+        .file-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .file-item:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .file-item.selected {
+            background-color: #e3f2fd;
+            border-color: #2196f3;
+        }
+        
+        .full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .testnet-info {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .testnet-info h3 {
+            margin-top: 0;
+            color: #856404;
+        }
+        
+        .key-display {
+            font-family: monospace;
+            background: #f8f9fa;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            word-break: break-all;
+            font-size: 12px;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 Vireca Testnet Test UI</h1>
+        <p>Testing Medical Data Management on Stellar Testnet</p>
+        <p><strong>Contract ID:</strong> CCPYZFKEAXHHS5VVW5J45TOU7S2EODJ7TZNJIA5LKDVL3PESCES6FNCI</p>
+    </div>
+
+    <div class="testnet-info">
+        <h3>🌐 Testnet Deployment Information</h3>
+        <p><strong>Network:</strong> Stellar Testnet</p>
+        <p><strong>Contract Explorer:</strong> <a href="https://stellar.expert/explorer/testnet/contract/CCPYZFKEAXHHS5VVW5J45TOU7S2EODJ7TZNJIA5LKDVL3PESCES6FNCI" target="_blank">View on Stellar Expert</a></p>
+        <p><strong>Deployment Transaction:</strong> <a href="https://stellar.expert/explorer/testnet/tx/abcc92188293908fc494311b5726810d702d8a53685c55be1cdcf0aa5b45c9fd" target="_blank">View Transaction</a></p>
+    </div>
+
+    <div class="status-bar">
+        <div class="status-item" id="apiStatus">API: Checking...</div>
+        <div class="status-item" id="networkStatus">Network: Checking...</div>
+        <div class="status-item" id="contractStatus">Contract: Checking...</div>
+    </div>
+
+    <div class="container">
+        <!-- Patient Panel -->
+        <div class="panel">
+            <h2>👤 Patient Dashboard</h2>
+            
+            <div class="form-group">
+                <label>Patient Public Key:</label>
+                <div class="key-display" id="patientKey">GA5HNMXP4XZL634C3DXKU6AM5WAJ6OKMOIKZ2R3SN22WZXRKCS2XA4MZ</div>
+            </div>
+            
+            <div class="form-group">
+                <label>Upload Medical File:</label>
+                <input type="file" id="medicalFile" accept=".txt,.pdf,.jpg,.png,.doc,.docx">
+            </div>
+            
+            <div class="form-group">
+                <label>File Title:</label>
+                <input type="text" id="fileTitle" placeholder="e.g., Blood Test Results">
+            </div>
+            
+            <div class="form-group">
+                <label>Data Type:</label>
+                <select id="dataType">
+                    <option value="medical_report">Medical Report</option>
+                    <option value="lab_result">Lab Result</option>
+                    <option value="prescription">Prescription</option>
+                    <option value="x_ray">X-Ray</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            
+            <button onclick="uploadFile()">📤 Upload & Register File</button>
+            <button onclick="loadPatientFiles()">🔄 Refresh My Files</button>
+            
+            <div id="patientFiles" class="file-list" style="margin-top: 15px;">
+                <em>Click "Refresh My Files" to load your uploaded files</em>
+            </div>
+        </div>
+
+        <!-- Doctor Panel -->
+        <div class="panel">
+            <h2>👨‍⚕️ Doctor Dashboard</h2>
+            
+            <div class="form-group">
+                <label>Doctor Public Key:</label>
+                <div class="key-display" id="doctorKey">GDOCTOREXAMPLEADDRESS1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ</div>
+            </div>
+            
+            <button onclick="loadDoctorFiles()">🔄 Load Accessible Files</button>
+            
+            <div id="doctorFiles" class="file-list" style="margin-top: 15px;">
+                <em>Click "Load Accessible Files" to see files you can access</em>
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <button onclick="decryptSelectedFile()" id="decryptBtn" disabled>🔓 Decrypt Selected File</button>
+            </div>
+        </div>
+
+        <!-- Access Management Panel -->
+        <div class="panel">
+            <h2>🔐 Access Management</h2>
+            
+            <div class="form-group">
+                <label>Grant Access to File:</label>
+                <select id="fileToShare">
+                    <option value="">Select a file to share...</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Doctor Public Key:</label>
+                <input type="text" id="doctorKeyInput" value="GDOCTOREXAMPLEADDRESS1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ">
+            </div>
+            
+            <div class="form-group">
+                <label>Access Duration (hours):</label>
+                <input type="number" id="accessDuration" value="24" min="1" max="168">
+            </div>
+            
+            <div class="form-group">
+                <label>Access Reason:</label>
+                <textarea id="accessReason" placeholder="e.g., Consultation for treatment plan"></textarea>
+            </div>
+            
+            <button onclick="grantAccess()">✅ Grant Access</button>
+            <button onclick="loadGrantedPermissions()">📋 View Granted Permissions</button>
+            
+            <div id="grantedPermissions" class="file-list" style="margin-top: 15px;">
+                <em>Click "View Granted Permissions" to see access you've granted</em>
+            </div>
+        </div>
+
+        <!-- Decrypted Content Panel -->
+        <div class="panel">
+            <h2>📄 Decrypted Content</h2>
+            <div id="decryptedContent" style="min-height: 200px; padding: 15px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">
+                <em>Decrypted medical file content will appear here...</em>
+            </div>
+            <button onclick="downloadDecryptedContent()" id="downloadBtn" style="display: none;">💾 Download Content</button>
+        </div>
+    </div>
+
+    <!-- Activity Log -->
+    <div class="panel full-width">
+        <h2>📊 Activity Log</h2>
+        <div id="activityLog" class="log">
+            Welcome to Vireca Testnet Test UI!
+            Ready to test medical data management on Stellar Testnet...
+        </div>
+        <button onclick="clearLog()">🗑️ Clear Log</button>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE = 'http://localhost:8000';
+        const PATIENT_TOKEN = 'mock_token_patient_123';
+        const DOCTOR_TOKEN = 'mock_token_doctor_456';
+        
+        let selectedFile = null;
+        let selectedDoctorFile = null;
+        let decryptedFileContent = null;
+        let patientFiles = [];
+
+        // Utility Functions
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('activityLog');
+            logElement.textContent += `\n[${timestamp}] ${message}`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('activityLog').textContent = 'Activity log cleared.\n';
+        }
+
+        function showError(message) {
+            log(`❌ ERROR: ${message}`);
+        }
+
+        function showSuccess(message) {
+            log(`✅ SUCCESS: ${message}`);
+        }
+
+        // API Functions
+        async function apiCall(endpoint, options = {}) {
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`, {
+                    headers: {
+                        'Authorization': `Bearer ${options.token || PATIENT_TOKEN}`,
+                        ...options.headers
+                    },
+                    ...options
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                showError(`API call failed: ${error.message}`);
+                throw error;
+            }
+        }
+
+        // Status Check Functions
+        async function checkAPIStatus() {
+            try {
+                const health = await apiCall('/health');
+                document.getElementById('apiStatus').className = 'status-item status-connected';
+                document.getElementById('apiStatus').textContent = 'API: Connected';
+                
+                // Update network status
+                const networkStatus = health.services?.stellar_network === 'connected' ? 'Connected' : 'Disconnected';
+                document.getElementById('networkStatus').className = `status-item status-${networkStatus.toLowerCase()}`;
+                document.getElementById('networkStatus').textContent = `Network: ${networkStatus}`;
+                
+                // Update contract status
+                const contractStatus = health.environment?.contract_id === 'configured' ? 'Configured' : 'Not Configured';
+                document.getElementById('contractStatus').className = `status-item status-${contractStatus === 'Configured' ? 'connected' : 'disconnected'}`;
+                document.getElementById('contractStatus').textContent = `Contract: ${contractStatus}`;
+                
+                log('✅ System status check completed');
+                return true;
+            } catch (error) {
+                document.getElementById('apiStatus').className = 'status-item status-disconnected';
+                document.getElementById('apiStatus').textContent = 'API: Disconnected';
+                return false;
+            }
+        }
+
+        // File Upload Functions
+        async function uploadFile() {
+            const fileInput = document.getElementById('medicalFile');
+            const titleInput = document.getElementById('fileTitle');
+            const dataTypeSelect = document.getElementById('dataType');
+            
+            if (!fileInput.files[0]) {
+                showError('Please select a file to upload');
+                return;
+            }
+            
+            if (!titleInput.value.trim()) {
+                showError('Please enter a file title');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('owner_public_key', document.getElementById('patientKey').textContent);
+            formData.append('patient_signature', 'mock_signature_testnet');
+            formData.append('metadata', JSON.stringify({
+                title: titleInput.value.trim(),
+                data_type: dataTypeSelect.value,
+                uploaded_at: new Date().toISOString()
+            }));
+            
+            try {
+                log(`📤 Uploading file: ${fileInput.files[0].name}...`);
+                
+                const result = await fetch(`${API_BASE}/prepare/register-data`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${PATIENT_TOKEN}`
+                    },
+                    body: formData
+                });
+                
+                if (!result.ok) {
+                    const errorText = await result.text();
+                    throw new Error(`Upload failed: ${errorText}`);
+                }
+                
+                const data = await result.json();
+                showSuccess(`File uploaded successfully! IPFS Hash: ${data.ipfs_hash}`);
+                
+                // Clear form
+                fileInput.value = '';
+                titleInput.value = '';
+                
+                // Refresh file list and share options
+                loadPatientFiles();
+                
+            } catch (error) {
+                showError(`File upload failed: ${error.message}`);
+            }
+        }
+
+        // Patient File Management
+        async function loadPatientFiles() {
+            try {
+                log('📋 Loading patient files...');
+                const data = await apiCall('/files/my-files');
+                
+                patientFiles = data.files || [];
+                const filesContainer = document.getElementById('patientFiles');
+                const shareSelect = document.getElementById('fileToShare');
+                
+                if (patientFiles.length === 0) {
+                    filesContainer.innerHTML = '<em>No files uploaded yet</em>';
+                    shareSelect.innerHTML = '<option value="">No files available to share</option>';
+                    return;
+                }
+                
+                // Update patient files display
+                filesContainer.innerHTML = patientFiles.map(file => `
+                    <div class="file-item" onclick="selectFile('${file.id}')">
+                        <strong>${file.metadata?.title || file.filename}</strong><br>
+                        <small>Type: ${file.metadata?.data_type || 'Unknown'} | Size: ${file.file_size} bytes</small><br>
+                        <small>IPFS: ${file.ipfs_hash}</small>
+                    </div>
+                `).join('');
+                
+                // Update share dropdown
+                shareSelect.innerHTML = '<option value="">Select a file to share...</option>' +
+                    patientFiles.map(file => `
+                        <option value="${file.ipfs_hash}" data-key="${file.encrypted_data_key}">
+                            ${file.metadata?.title || file.filename}
+                        </option>
+                    `).join('');
+                
+                showSuccess(`Loaded ${patientFiles.length} patient files`);
+                
+            } catch (error) {
+                showError(`Failed to load patient files: ${error.message}`);
+            }
+        }
+
+        function selectFile(fileId) {
+            selectedFile = fileId;
+            document.querySelectorAll('#patientFiles .file-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            event.target.closest('.file-item').classList.add('selected');
+            log(`📄 Selected file: ${fileId}`);
+        }
+
+        // Access Management
+        async function grantAccess() {
+            const fileSelect = document.getElementById('fileToShare');
+            const doctorKeyInput = document.getElementById('doctorKeyInput');
+            const durationInput = document.getElementById('accessDuration');
+            const reasonInput = document.getElementById('accessReason');
+            
+            if (!fileSelect.value) {
+                showError('Please select a file to share');
+                return;
+            }
+            
+            if (!doctorKeyInput.value.trim()) {
+                showError('Please enter doctor public key');
+                return;
+            }
+            
+            const selectedOption = fileSelect.options[fileSelect.selectedIndex];
+            const encryptedDataKey = selectedOption.getAttribute('data-key');
+            
+            if (!encryptedDataKey) {
+                showError('Selected file does not have encrypted data key');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('granter_public_key', document.getElementById('patientKey').textContent);
+            formData.append('doctor_public_key', doctorKeyInput.value.trim());
+            formData.append('ipfs_hash', fileSelect.value);
+            formData.append('patient_signature', 'mock_signature_testnet');
+            formData.append('patient_encrypted_data_key', encryptedDataKey);
+            formData.append('duration_in_ledgers', Math.floor(parseInt(durationInput.value) * 720)); // ~720 ledgers per hour
+            formData.append('access_reason', reasonInput.value.trim());
+            
+            try {
+                log(`🔐 Granting access to ${fileSelect.options[fileSelect.selectedIndex].text}...`);
+                
+                const result = await fetch(`${API_BASE}/prepare/grant-access`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${PATIENT_TOKEN}`
+                    },
+                    body: formData
+                });
+                
+                if (!result.ok) {
+                    const errorText = await result.text();
+                    throw new Error(errorText);
+                }
+                
+                const data = await result.json();
+                showSuccess(`Access granted successfully! Duration: ${data.duration_hours.toFixed(1)} hours`);
+                
+                // Clear reason field
+                reasonInput.value = '';
+                
+            } catch (error) {
+                showError(`Failed to grant access: ${error.message}`);
+            }
+        }
+
+        async function loadGrantedPermissions() {
+            try {
+                log('📋 Loading granted permissions...');
+                const data = await apiCall('/patient/granted-permissions');
+                
+                const permissions = data.granted_permissions || [];
+                const container = document.getElementById('grantedPermissions');
+                
+                if (permissions.length === 0) {
+                    container.innerHTML = '<em>No permissions granted yet</em>';
+                    return;
+                }
+                
+                container.innerHTML = permissions.map(perm => `
+                    <div class="file-item">
+                        <strong>File: ${perm.ipfs_hash.substring(0, 20)}...</strong><br>
+                        <small>Doctor: ${perm.doctor_username}</small><br>
+                        <small>Duration: ${perm.duration_hours.toFixed(1)} hours | Status: ${perm.status}</small><br>
+                        <small>Reason: ${perm.access_reason || 'No reason provided'}</small>
+                    </div>
+                `).join('');
+                
+                showSuccess(`Loaded ${permissions.length} granted permissions`);
+                
+            } catch (error) {
+                showError(`Failed to load granted permissions: ${error.message}`);
+            }
+        }
+
+        // Doctor Functions
+        async function loadDoctorFiles() {
+            try {
+                log('👨‍⚕️ Loading doctor accessible files...');
+                const data = await apiCall('/doctor/accessible-files', { token: DOCTOR_TOKEN });
+                
+                const files = data.accessible_files || [];
+                const container = document.getElementById('doctorFiles');
+                
+                if (files.length === 0) {
+                    container.innerHTML = '<em>No accessible files found</em>';
+                    document.getElementById('decryptBtn').disabled = true;
+                    return;
+                }
+                
+                container.innerHTML = files.map(file => `
+                    <div class="file-item" onclick="selectDoctorFile('${file.ipfs_hash}', '${file.encrypted_data_key_for_doctor}')">
+                        <strong>${file.metadata?.title || file.filename}</strong><br>
+                        <small>Patient: ${file.patient_name}</small><br>
+                        <small>Type: ${file.metadata?.data_type || 'Unknown'} | Size: ${file.file_size} bytes</small><br>
+                        <small>IPFS: ${file.ipfs_hash}</small><br>
+                        <small>Reason: ${file.access_reason || 'No reason provided'}</small>
+                    </div>
+                `).join('');
+                
+                showSuccess(`Loaded ${files.length} accessible files for doctor`);
+                
+            } catch (error) {
+                showError(`Failed to load doctor files: ${error.message}`);
+            }
+        }
+
+        function selectDoctorFile(ipfsHash, encryptedKey) {
+            selectedDoctorFile = { ipfsHash, encryptedKey };
+            document.querySelectorAll('#doctorFiles .file-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            event.target.closest('.file-item').classList.add('selected');
+            document.getElementById('decryptBtn').disabled = false;
+            log(`🔓 Selected file for decryption: ${ipfsHash}`);
+        }
+
+        async function decryptSelectedFile() {
+            if (!selectedDoctorFile) {
+                showError('Please select a file to decrypt');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('doctor_public_key', document.getElementById('doctorKey').textContent);
+            formData.append('ipfs_hash', selectedDoctorFile.ipfsHash);
+            formData.append('encrypted_data_key_for_doctor', selectedDoctorFile.encryptedKey);
+            
+            try {
+                log(`🔓 Decrypting file: ${selectedDoctorFile.ipfsHash}...`);
+                
+                const result = await fetch(`${API_BASE}/doctor/decrypt-data`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${DOCTOR_TOKEN}`
+                    },
+                    body: formData
+                });
+                
+                if (!result.ok) {
+                    const errorText = await result.text();
+                    throw new Error(errorText);
+                }
+                
+                const data = await result.json();
+                
+                // Decode base64 content
+                const decodedContent = atob(data.decrypted_data);
+                decryptedFileContent = decodedContent;
+                
+                document.getElementById('decryptedContent').innerHTML = `
+                    <h4>📄 Decrypted Medical File Content:</h4>
+                    <pre style="white-space: pre-wrap; background: white; padding: 15px; border-radius: 5px; border: 1px solid #ddd;">${decodedContent}</pre>
+                    <hr>
+                    <p><strong>File Size:</strong> ${data.data_size} bytes</p>
+                    <p><strong>Decryption Time:</strong> ${data.access_time}</p>
+                    <p><strong>Mock Mode:</strong> ${data.mock_mode ? 'Yes' : 'No'}</p>
+                `;
+                
+                document.getElementById('downloadBtn').style.display = 'inline-block';
+                showSuccess('File decrypted successfully!');
+                
+            } catch (error) {
+                showError(`Failed to decrypt file: ${error.message}`);
+            }
+        }
+
+        function downloadDecryptedContent() {
+            if (!decryptedFileContent) {
+                showError('No decrypted content available');
+                return;
+            }
+            
+            const blob = new Blob([decryptedFileContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `decrypted_medical_file_${Date.now()}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            log('💾 Downloaded decrypted content');
+        }
+
+        // Initialize
+        async function initialize() {
+            log('🚀 Initializing Vireca Testnet Test UI...');
+            
+            // Check API status
+            await checkAPIStatus();
+            
+            // Load initial data
+            loadPatientFiles();
+            
+            log('✅ Initialization complete!');
+            log('📝 Instructions:');
+            log('   1. Upload a medical file as a patient');
+            log('   2. Grant access to the doctor');
+            log('   3. Switch to doctor view and decrypt the file');
+        }
+
+        // Auto-refresh status every 30 seconds
+        setInterval(checkAPIStatus, 30000);
+
+        // Initialize when page loads
+        window.addEventListener('load', initialize);
+    </script>
+</body>
+</html> 

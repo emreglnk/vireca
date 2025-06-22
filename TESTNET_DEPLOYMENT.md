@@ -85,6 +85,56 @@ RPC_URL="https://soroban-testnet.stellar.org:443"
 
 ---
 
+## 🧪 Testing Tools
+
+### Interactive Test UI
+A comprehensive web-based test interface is available:
+- **File**: `backend-launchtube/test-ui.html`
+- **Access**: Open in browser while backend is running at `http://localhost:8000`
+- **Features**:
+  - 👤 Patient file upload and management
+  - 👨‍⚕️ Doctor access control and permissions  
+  - 🔓 Real-time file decryption testing
+  - 📊 Activity logging and status monitoring
+  - 🌐 Direct links to testnet explorer
+  - 📋 Complete workflow testing interface
+
+### Automated Test Script
+Run the complete workflow test:
+```bash
+cd backend-launchtube
+python3 test_testnet_workflow.py
+```
+
+**Test Results**: ✅ All workflow components verified working
+- File encryption and IPFS upload
+- Access control and permissions
+- Doctor file access and decryption
+- Smart contract integration
+
+### Manual Testing Endpoints
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Upload medical file
+curl -X POST http://localhost:8000/prepare/register-data \
+  -H "Authorization: Bearer mock_token_patient_123" \
+  -F "file=@test_medical.txt" \
+  -F "owner_public_key=GA5HNMXP4XZL634C3DXKU6AM5WAJ6OKMOIKZ2R3SN22WZXRKCS2XA4MZ" \
+  -F "patient_signature=mock_signature_testnet"
+
+# Grant doctor access
+curl -X POST http://localhost:8000/prepare/grant-access \
+  -H "Authorization: Bearer mock_token_patient_123" \
+  -F "granter_public_key=GA5HNMXP4XZL634C3DXKU6AM5WAJ6OKMOIKZ2R3SN22WZXRKCS2XA4MZ" \
+  -F "doctor_public_key=GDOCTOREXAMPLEADDRESS1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ" \
+  -F "ipfs_hash=YOUR_IPFS_HASH" \
+  -F "patient_signature=mock_signature_testnet"
+```
+
+---
+
 ## 🎯 Next Steps
 
 1. **Frontend Integration**: Connect the web interface to the testnet contract

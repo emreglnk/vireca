@@ -65,6 +65,12 @@ The Vireca protocol is now live on Stellar Testnet and ready for testing:
 * **Deployment Transaction:** https://stellar.expert/explorer/testnet/tx/abcc92188293908fc494311b5726810d702d8a53685c55be1cdcf0aa5b45c9fd
 * **Full Deployment Report:** [TESTNET_DEPLOYMENT.md](TESTNET_DEPLOYMENT.md)
 
+### 🧪 Try It Now!
+
+* **Interactive Test UI:** [backend-launchtube/test-ui.html](backend-launchtube/test-ui.html)
+* **Quick Start Guide:** [backend-launchtube/TESTNET_QUICKSTART.md](backend-launchtube/TESTNET_QUICKSTART.md)
+* **Automated Testing:** Run `python3 backend-launchtube/test_testnet_workflow.py`
+
 ### Roadmap
 
 * [ ] **Mobile App Development:** Native iOS and Android applications for an even better user experience.
