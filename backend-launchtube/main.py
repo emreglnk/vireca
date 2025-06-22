@@ -64,6 +64,9 @@ uploaded_files = {}  # {user_public_key: [file_info_dict, ...]}
 # In-memory storage for data keys in test mode (In production, use a database)
 test_data_keys = {}  # {ipfs_hash: data_key_bytes}
 
+# In-memory storage for doctor access permissions (In production, use a database)
+doctor_permissions = {}  # {doctor_public_key: [permission_dict, ...]}
+
 # --- API Modelleri (Pydantic) ---
 class LaunchtubeUser(BaseModel):
     public_key: str
@@ -598,8 +601,10 @@ async def prepare_grant_access(
     
     # 3. Re-encrypt data key for doctor
     if patient_signature.startswith("mock_"):
-        # Mock encrypted data key for doctor (test mode)
-        encrypted_data_key_for_doctor = f"mock_doctor_key_{hash(doctor_public_key)}"
+        # Mock encrypted data key for doctor (test mode) - proper base64 format
+        import base64
+        mock_key = f"mock_doctor_key_{hash(doctor_public_key)}".encode('utf-8')
+        encrypted_data_key_for_doctor = base64.b64encode(mock_key).decode('utf-8')
     else:
         encrypted_data_key_for_doctor = crypto.encrypt_data_key_for_doctor(data_key, doctor_public_key)
     
@@ -641,6 +646,25 @@ async def prepare_grant_access(
             params
         )
     
+    # Doktor iznini kaydet
+    permission_info = {
+        "permission_id": f"perm_{hash(granter_public_key + doctor_public_key + ipfs_hash)}",
+        "ipfs_hash": ipfs_hash,
+        "granter_public_key": granter_public_key,
+        "granter_username": granter.username if hasattr(granter, 'username') else f"user_{granter_public_key[:8]}",
+        "encrypted_data_key_for_doctor": encrypted_data_key_for_doctor,
+        "duration_in_ledgers": duration_in_ledgers,
+        "duration_hours": duration_in_ledgers * 5 / 3600,
+        "access_reason": access_reason,
+        "granted_at": datetime.utcnow().isoformat(),
+        "status": "active"
+    }
+    
+    # Doktor izin listesine ekle
+    if doctor_public_key not in doctor_permissions:
+        doctor_permissions[doctor_public_key] = []
+    doctor_permissions[doctor_public_key].append(permission_info)
+    
     return {
         "unsigned_xdr": unsigned_xdr,
         "granter": granter,
@@ -648,7 +672,8 @@ async def prepare_grant_access(
         "duration_hours": duration_in_ledgers * 5 / 3600,  # Yaklaşık saat cinsinden
         "access_reason": access_reason,
         "encrypted_data_key_for_doctor": encrypted_data_key_for_doctor,
-        "crypto_status": "Data key successfully re-encrypted for doctor"
+        "crypto_status": "Data key successfully re-encrypted for doctor",
+        "permission_info": permission_info
     }
 
 @app.post("/doctor/decrypt-data", summary="Doctor'ın encrypted data'yı decrypt etmesi")
@@ -667,20 +692,64 @@ async def doctor_decrypt_data(
             detail="Sadece kendi verilerinize erişebilirsiniz"
         )
     
+    # Check if doctor has permission to access this file
+    doctor_perms = doctor_permissions.get(doctor_public_key, [])
+    has_permission = False
+    for perm in doctor_perms:
+        if perm["ipfs_hash"] == ipfs_hash and perm["status"] == "active":
+            has_permission = True
+            break
+    
+    if not has_permission:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Doctor does not have active permission to access IPFS hash {ipfs_hash}. Please request access from the patient first."
+        )
+    
     # === DOCTOR ACCESS CRYPTO FLOW ===
     crypto = VireacaCrypto()
+    
+    # Debug logging
+    print(f"🔍 Doctor decrypt request:")
+    print(f"   IPFS Hash: {ipfs_hash}")
+    print(f"   Doctor Key: {doctor_public_key[:8]}...")
+    print(f"   Encrypted Data Key Length: {len(encrypted_data_key_for_doctor)}")
+    print(f"   Encrypted Data Key Preview: {encrypted_data_key_for_doctor[:20]}...")
     
     try:
         # 1. Decrypt data key with doctor's key
         # Test mode için stored data key kullan
-        if encrypted_data_key_for_doctor.startswith("mock_"):
+        is_mock_mode = False
+        
+        try:
+            # Try to decode base64 to check if it's a mock key
+            import base64
+            # Add padding if needed for proper base64 decoding
+            padded_key = encrypted_data_key_for_doctor
+            missing_padding = len(padded_key) % 4
+            if missing_padding:
+                padded_key += '=' * (4 - missing_padding)
+            
+            decoded_key = base64.b64decode(padded_key).decode('utf-8')
+            if decoded_key.startswith("mock_doctor_key_"):
+                is_mock_mode = True
+        except Exception:
+            # If base64 decode fails, check if it starts with mock directly
+            if encrypted_data_key_for_doctor.startswith("mock_"):
+                is_mock_mode = True
+        
+        if is_mock_mode:
             # Test mode: use the stored real data key for this IPFS hash
             if ipfs_hash in test_data_keys:
                 data_key = test_data_keys[ipfs_hash]
             else:
-                # Fallback to mock data key if not found
-                data_key = b"mock_data_key_32_bytes_for_test_!"
+                # No data key found for this IPFS hash in test mode
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"No data key found for IPFS hash {ipfs_hash} in test mode. Please upload the file first and grant access to the doctor."
+                )
         else:
+            # Production mode: decrypt with doctor's key
             data_key = crypto.decrypt_data_key_for_doctor(encrypted_data_key_for_doctor, doctor_public_key)
         
         # 2. Download encrypted data from IPFS
@@ -708,7 +777,13 @@ async def doctor_decrypt_data(
                 )
         
         # 3. Decrypt medical data
-        decrypted_data = crypto.decrypt_data(encrypted_data, data_key)
+        try:
+            decrypted_data = crypto.decrypt_data(encrypted_data, data_key)
+        except Exception as decrypt_error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to decrypt medical data: {str(decrypt_error)}"
+            )
         
         return {
             "status": "success",
@@ -716,7 +791,8 @@ async def doctor_decrypt_data(
             "data_size": len(decrypted_data),
             "decrypted_data": base64.b64encode(decrypted_data).decode('utf-8'),
             "crypto_status": "Data successfully decrypted for doctor access",
-            "access_time": datetime.utcnow().isoformat()
+            "access_time": datetime.utcnow().isoformat(),
+            "mock_mode": is_mock_mode
         }
         
     except Exception as e:
@@ -926,15 +1002,104 @@ async def get_file_details(
             detail=f"Dosya detayları alınırken hata oluştu: {str(e)}"
         )
 
+@app.get("/doctor/accessible-files", summary="Doktorun erişim yetkisi olan dosyaları listele")
+async def get_doctor_accessible_files(current_user: str = Depends(verify_token)):
+    """Doktorun erişim yetkisi olan dosyaları listeler"""
+    try:
+        doctor_perms = doctor_permissions.get(current_user, [])
+        accessible_files = []
+        
+        for permission in doctor_perms:
+            ipfs_hash = permission["ipfs_hash"]
+            granter_key = permission["granter_public_key"]
+            
+            # Granter'ın dosyalarından bu IPFS hash'e sahip olanı bul
+            granter_files = uploaded_files.get(granter_key, [])
+            for file_info in granter_files:
+                if file_info["ipfs_hash"] == ipfs_hash:
+                    # Dosya bilgilerini permission bilgileriyle birleştir
+                    accessible_file = {
+                        **file_info,
+                        "permission_info": permission,
+                        "patient_name": permission["granter_username"],
+                        "access_granted_at": permission["granted_at"],
+                        "access_reason": permission["access_reason"],
+                        "access_duration_hours": permission["duration_hours"],
+                        "access_status": permission["status"],
+                        "encrypted_data_key_for_doctor": permission["encrypted_data_key_for_doctor"]
+                    }
+                    accessible_files.append(accessible_file)
+                    break
+        
+        return {
+            "status": "success",
+            "accessible_files": accessible_files,
+            "total_accessible_files": len(accessible_files),
+            "doctor_public_key": current_user
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erişilebilir dosyalar listelenirken hata oluştu: {str(e)}"
+        )
+
 @app.get("/files", summary="Tüm dosyaları listele (admin/debug)")
 async def get_all_files():
     """Tüm yüklenen dosyaları listeler (debug için)"""
     return {
         "status": "success",
         "all_files": uploaded_files,
+        "doctor_permissions": doctor_permissions,
         "total_users": len(uploaded_files),
-        "total_files": sum(len(files) for files in uploaded_files.values())
+        "total_files": sum(len(files) for files in uploaded_files.values()),
+        "total_permissions": sum(len(perms) for perms in doctor_permissions.values())
     }
+
+@app.get("/doctor/permissions", summary="Doktorun tüm izinlerini listele")
+async def get_doctor_permissions(current_user: str = Depends(verify_token)):
+    """Doktorun sahip olduğu tüm izinleri listeler"""
+    try:
+        doctor_perms = doctor_permissions.get(current_user, [])
+        
+        return {
+            "status": "success",
+            "permissions": doctor_perms,
+            "total_permissions": len(doctor_perms),
+            "doctor_public_key": current_user
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"İzinler listelenirken hata oluştu: {str(e)}"
+        )
+
+@app.get("/patient/granted-permissions", summary="Hastanın verdiği izinleri listele")
+async def get_patient_granted_permissions(current_user: str = Depends(verify_token)):
+    """Hastanın doktorlara verdiği izinleri listeler"""
+    try:
+        granted_permissions = []
+        
+        # Tüm doktor izinlerini tara ve bu hastanın verdiği izinleri bul
+        for doctor_key, perms in doctor_permissions.items():
+            for perm in perms:
+                if perm["granter_public_key"] == current_user:
+                    granted_permissions.append({
+                        **perm,
+                        "doctor_public_key": doctor_key,
+                        "doctor_username": f"doctor_{doctor_key[:8]}"
+                    })
+        
+        return {
+            "status": "success",
+            "granted_permissions": granted_permissions,
+            "total_granted": len(granted_permissions),
+            "patient_public_key": current_user
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Verilen izinler listelenirken hata oluştu: {str(e)}"
+        )
 
 @app.get("/test-pinata")
 async def test_pinata():

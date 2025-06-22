@@ -79,7 +79,13 @@
                     </div>
                     <button class="btn btn-success" onclick="grantAccess()">Grant Access</button>
                     
+                    <hr>
+                    <h4>📋 My Documents & Permissions</h4>
+                    <button class="btn btn-primary" onclick="loadPatientFiles()">Load My Files</button>
+                    <button class="btn btn-primary" onclick="loadGrantedPermissions()">View Granted Permissions</button>
+                    
                     <div id="patient-documents"></div>
+                    <div id="patient-permissions"></div>
                 </div>
             </div>
 
@@ -90,6 +96,12 @@
                 <button class="btn btn-primary" onclick="connectWallet('doctor')">Connect as Doctor</button>
                 
                 <div id="doctor-actions" class="hidden">
+                    <h4>📋 My Accessible Files</h4>
+                    <button class="btn btn-primary" onclick="loadDoctorFiles()">Load My Files</button>
+                    <div id="doctor-accessible-files"></div>
+                    
+                    <hr>
+                    <h4>🔍 Manual Document Access</h4>
                     <div class="form-group">
                         <label>Access Patient Document:</label>
                         <input type="text" id="view-hash" placeholder="Enter IPFS hash">
@@ -173,6 +185,17 @@
             document.getElementById(`${type}-actions`).classList.remove('hidden');
             
             log(`🔗 Connected as ${type.toUpperCase()}: ${WALLETS[type]}`);
+            
+            // Auto-load files
+            if (type === 'doctor') {
+                setTimeout(() => {
+                    loadDoctorFiles();
+                }, 500);
+            } else if (type === 'patient') {
+                setTimeout(() => {
+                    loadPatientFiles();
+                }, 500);
+            }
         }
 
         async function uploadDocument() {
@@ -315,6 +338,126 @@
             }
         }
 
+        async function loadDoctorFiles() {
+            if (currentWallet !== 'doctor') {
+                log('❌ Please connect as doctor first');
+                return;
+            }
+
+            log('📋 Loading doctor accessible files...');
+
+            try {
+                const response = await fetch(`${API_BASE}/doctor/accessible-files`, {
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    log(`✅ Loaded ${result.total_accessible_files} accessible files`);
+                    
+                    const filesDiv = document.getElementById('doctor-accessible-files');
+                    
+                    if (result.accessible_files.length === 0) {
+                        filesDiv.innerHTML = `
+                            <div class="document-item">
+                                <em>No accessible files found. Ask patients to grant you access first.</em>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    filesDiv.innerHTML = `
+                        <h5>📁 Accessible Files (${result.total_accessible_files})</h5>
+                        ${result.accessible_files.map(file => `
+                            <div class="document-item">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <strong>📄 ${file.filename}</strong>
+                                        <br><small>👤 Patient: ${file.patient_name}</small>
+                                        <br><small>📅 Access granted: ${new Date(file.access_granted_at).toLocaleString()}</small>
+                                        <br><small>⏰ Duration: ${file.access_duration_hours} hours</small>
+                                        <br><small>💬 Reason: ${file.access_reason || 'No reason specified'}</small>
+                                        <br><small>🔗 IPFS: ${file.ipfs_hash}</small>
+                                    </div>
+                                    <div>
+                                        <button class="btn btn-success" onclick="viewAccessibleDocument('${file.ipfs_hash}', '${file.encrypted_data_key_for_doctor}')">
+                                            🔓 Decrypt & View
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    `;
+                } else {
+                    const error = await response.json();
+                    log(`❌ Failed to load files: ${error.detail}`);
+                }
+            } catch (error) {
+                log(`❌ Load files error: ${error.message}`);
+            }
+        }
+
+        async function viewAccessibleDocument(ipfsHash, encryptedDataKey) {
+            if (currentWallet !== 'doctor') {
+                log('❌ Please connect as doctor first');
+                return;
+            }
+
+            log(`👀 Doctor decrypting document: ${ipfsHash}`);
+            log(`🔐 Using stored encrypted data key...`);
+
+            try {
+                const formData = new FormData();
+                formData.append('doctor_public_key', WALLETS.doctor);
+                formData.append('ipfs_hash', ipfsHash);
+                formData.append('encrypted_data_key_for_doctor', encryptedDataKey);
+
+                const response = await fetch(`${API_BASE}/doctor/decrypt-data`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`
+                    },
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    log(`✅ Document decrypted successfully!`);
+                    log(`🔐 ${result.crypto_status}`);
+                    
+                    // Decode base64 decrypted data
+                    const decryptedData = atob(result.decrypted_data);
+                    
+                    const viewer = document.getElementById('document-viewer');
+                    const content = document.getElementById('document-content');
+                    
+                    content.innerHTML = `
+                        <div class="document-item">
+                            <h5>📄 Decrypted Medical Document</h5>
+                            <p><strong>IPFS Hash:</strong> ${ipfsHash}</p>
+                            <p><strong>Access Time:</strong> ${result.access_time}</p>
+                            <p><strong>Data Size:</strong> ${result.data_size} bytes</p>
+                            <p><strong>Encryption Status:</strong> ✅ Successfully decrypted</p>
+                            <hr>
+                            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #dee2e6;">
+                                <h6>📋 Medical Content:</h6>
+                                <pre style="white-space: pre-wrap; font-family: monospace;">${decryptedData}</pre>
+                            </div>
+                        </div>
+                    `;
+                    
+                    viewer.classList.remove('hidden');
+                } else {
+                    const error = await response.json();
+                    log(`❌ Decryption failed: ${error.detail}`);
+                }
+            } catch (error) {
+                log(`❌ View error: ${error.message}`);
+            }
+        }
+
         async function viewDocument() {
             if (currentWallet !== 'doctor') {
                 log('❌ Please connect as doctor first');
@@ -385,21 +528,107 @@
             }
         }
 
-        function updateDocumentsList() {
+        async function loadPatientFiles() {
+            if (currentWallet !== 'patient') {
+                log('❌ Please connect as patient first');
+                return;
+            }
+
+            log('📋 Loading patient files...');
+
+            try {
+                const response = await fetch(`${API_BASE}/files/my-files`, {
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    log(`✅ Loaded ${result.total_files} patient files`);
+                    updateDocumentsList(result.files);
+                } else {
+                    const error = await response.json();
+                    log(`❌ Failed to load files: ${error.detail}`);
+                }
+            } catch (error) {
+                log(`❌ Load files error: ${error.message}`);
+            }
+        }
+
+        async function loadGrantedPermissions() {
+            if (currentWallet !== 'patient') {
+                log('❌ Please connect as patient first');
+                return;
+            }
+
+            log('📋 Loading granted permissions...');
+
+            try {
+                const response = await fetch(`${API_BASE}/patient/granted-permissions`, {
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    log(`✅ Loaded ${result.total_granted} granted permissions`);
+                    
+                    const permissionsDiv = document.getElementById('patient-permissions');
+                    
+                    if (result.granted_permissions.length === 0) {
+                        permissionsDiv.innerHTML = `
+                            <div class="document-item">
+                                <h5>🔐 Granted Permissions</h5>
+                                <em>No permissions granted yet.</em>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    permissionsDiv.innerHTML = `
+                        <h5>🔐 Granted Permissions (${result.total_granted})</h5>
+                        ${result.granted_permissions.map(perm => `
+                            <div class="document-item">
+                                <strong>👨‍⚕️ Doctor: ${perm.doctor_username}</strong>
+                                <br><small>📄 IPFS: ${perm.ipfs_hash}</small>
+                                <br><small>📅 Granted: ${new Date(perm.granted_at).toLocaleString()}</small>
+                                <br><small>⏰ Duration: ${perm.duration_hours} hours</small>
+                                <br><small>💬 Reason: ${perm.access_reason || 'No reason specified'}</small>
+                                <br><small>🔒 Status: ${perm.status}</small>
+                            </div>
+                        `).join('')}
+                    `;
+                } else {
+                    const error = await response.json();
+                    log(`❌ Failed to load permissions: ${error.detail}`);
+                }
+            } catch (error) {
+                log(`❌ Load permissions error: ${error.message}`);
+            }
+        }
+
+        function updateDocumentsList(serverFiles = null) {
             const patientDocs = document.getElementById('patient-documents');
             
-            if (uploadedDocs.length === 0) {
+            // Use server files if available, otherwise use local uploadedDocs
+            const docs = serverFiles || uploadedDocs;
+            
+            if (docs.length === 0) {
                 patientDocs.innerHTML = '<div class="document-item"><em>No documents uploaded yet</em></div>';
                 return;
             }
 
             patientDocs.innerHTML = `
-                <h4>📋 My Documents</h4>
-                ${uploadedDocs.map(doc => `
+                <h5>📁 My Documents (${docs.length})</h5>
+                ${docs.map(doc => `
                     <div class="document-item">
-                        <strong>${doc.title}</strong> (${doc.type})
-                        <br><small>File: ${doc.filename}</small>
-                        <br><small>IPFS: ${doc.ipfs_hash}</small>
+                        <strong>📄 ${doc.title || doc.filename}</strong> ${doc.type ? `(${doc.type})` : ''}
+                        <br><small>📁 File: ${doc.filename || doc.original_filename}</small>
+                        <br><small>🔗 IPFS: ${doc.ipfs_hash}</small>
+                        <br><small>📅 Uploaded: ${doc.upload_date ? new Date(doc.upload_date).toLocaleString() : 'Unknown'}</small>
+                        <br><small>🔒 Encrypted: ${doc.encrypted ? '✅ Yes' : '❌ No'}</small>
                         <br><a href="https://gateway.pinata.cloud/ipfs/${doc.ipfs_hash}" target="_blank">🔗 View on IPFS</a>
                     </div>
                 `).join('')}
