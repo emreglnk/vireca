@@ -4,7 +4,7 @@
 
 Vireca is a Stellar-based protocol designed to empower patients by giving them sovereign control over their medical data. We believe that access to your health information is a fundamental right, not a privilege.
 
- ✅ **[Presentation Here]([https://gamma.app/docs/VIRECA-Your-Health-Data-Your-Control-7e5arg1yj97baco])
+ ✅ [Presentation Here]([<iframe src="https://gamma.app/embed/7e5arg1yj97baco" style="width: 700px; max-width: 100%; height: 450px" allow="fullscreen" title="VIRECA : Your Health Data, Your Control."></iframe>])
 ---
 
 ## 🌐 The Problem: Locked Data, Lost Potential
