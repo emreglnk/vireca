@@ -53,7 +53,7 @@ This creates a **win-win-win** cycle where patients gain free access and data co
 
 ### Current Status (As of Q2 2025)
 
-* ✅ **[Live Demo Available Here]([LINK-TO-YOUR-DEMO])**
+* ✅ **[Live Demo Available Here]([http://dev.iyi.im:3000])**
 * ✅ Smart Contract successfully deployed on Testnet (via Launchtube).
 * ✅ Functional prototype for Passkey-based login is complete.
 
