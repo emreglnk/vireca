@@ -1,93 +1,93 @@
-# Vireca Kontratını Devnet'e Deploy Etme Rehberi
+# Vireca Contract Devnet Deployment Guide
 
-Launchtube platformu ile Vireca akıllı kontratını Stellar Devnet'e deploy etmek için adım adım rehber.
+Step-by-step guide to deploy the Vireca smart contract to Stellar Devnet with the Launchtube platform.
 
-## 🚀 Devnet Nedir?
+## 🚀 What is Devnet?
 
 **Stellar Devnet** (Development Network):
-- ⚡ **Hızlı reset**: Periyodik olarak sıfırlanır
-- 🔄 **Sürekli güncelleme**: En yeni özellikler test edilir  
-- 🆓 **Ücretsiz**: Test XLM kolayca alınabilir
-- 🛠️ **Geliştirme odaklı**: Hızlı iterasyon için ideal
+- ⚡ **Fast reset**: Periodically reset
+- 🔄 **Continuous updates**: Latest features are tested  
+- 🆓 **Free**: Test XLM can be easily obtained
+- 🛠️ **Development-focused**: Ideal for rapid iteration
 
-## 📋 Ön Gereksinimler
+## 📋 Prerequisites
 
-### 1. Soroban CLI Kurulumu
+### 1. Soroban CLI Installation
 ```bash
-# Soroban CLI'yi kurun
+# Install Soroban CLI
 cargo install --locked soroban-cli
 
-# Versiyonu kontrol edin
+# Check version
 soroban --version
 ```
 
-### 2. Stellar Cüzdan Oluşturma
+### 2. Create Stellar Wallet
 ```bash
-# Yeni cüzdan oluştur
+# Generate new wallet
 soroban keys generate --global alice
 
-# Public key'i görüntüle
+# Display public key
 soroban keys address alice
 ```
 
-### 3. Devnet için XLM Alma
+### 3. Get XLM for Devnet
 ```bash
-# Friendbot'tan XLM al (devnet için)
+# Get XLM from Friendbot (for devnet)
 soroban keys fund alice --network devnet
 ```
 
-## 🔧 Network Yapılandırması
+## 🔧 Network Configuration
 
-### Devnet Ayarları
+### Devnet Settings
 ```bash
-# Devnet network'ü ekle
+# Add devnet network
 soroban network add \
   --global devnet \
   --rpc-url https://rpc-devnet.stellar.org:443 \
   --network-passphrase "Standalone Network ; February 2017"
 ```
 
-### Network Kontrolü
+### Network Check
 ```bash
-# Mevcut network'leri listele
+# List available networks
 soroban network ls
 
-# Devnet bağlantısını test et
+# Test devnet connection
 soroban network status --network devnet
 ```
 
-## 📦 Kontrat Deploy Etme
+## 📦 Deploy Contract
 
-### 1. Kontratı Derle
+### 1. Compile Contract
 ```bash
 cd contracts
 cargo build --target wasm32-unknown-unknown --release
 ```
 
-### 2. Kontratı Deploy Et
+### 2. Deploy Contract
 ```bash
-# WASM dosyasını deploy et
+# Deploy WASM file
 soroban contract deploy \
   --wasm target/wasm32-unknown-unknown/release/vireca_contract.wasm \
   --source alice \
   --network devnet
 ```
 
-### 3. Contract ID'yi Kaydet
-Deploy işlemi sonucunda size bir Contract ID verilecek:
+### 3. Save Contract ID
+After deployment, you'll receive a Contract ID:
 ```
 Contract deployed successfully with ID: CABC123...XYZ789
 ```
 
-Bu ID'yi `.env` dosyanızda kullanın:
+Use this ID in your `.env` file:
 ```env
 CONTRACT_ID="CABC123...XYZ789"
 ```
 
-## 🔧 Backend Yapılandırması
+## 🔧 Backend Configuration
 
-### 1. Environment Ayarları
-`.env` dosyasını güncelleyin:
+### 1. Environment Settings
+Update your `.env` file:
 
 ```env
 # Launchtube Platform Configuration
@@ -97,7 +97,7 @@ LAUNCHTUBE_NETWORK="devnet"
 
 # Stellar Network Configuration - DEVNET
 PINATA_JWT="your_pinata_jwt_key"
-CONTRACT_ID="CABC123...XYZ789"  # Yukarıda aldığınız ID
+CONTRACT_ID="CABC123...XYZ789"  # ID you received above
 NETWORK_PASSPHRASE="Standalone Network ; February 2017"
 RPC_URL="https://rpc-devnet.stellar.org:443"
 
@@ -105,20 +105,20 @@ RPC_URL="https://rpc-devnet.stellar.org:443"
 JWT_SECRET_KEY="your-super-secret-jwt-key"
 ```
 
-### 2. Backend'i Başlat
+### 2. Start Backend
 ```bash
 cd backend-launchtube
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-## 🧪 Test Etme
+## 🧪 Testing
 
 ### 1. Health Check
 ```bash
 curl http://localhost:8000/health
 ```
 
-Başarılı yanıt:
+Successful response:
 ```json
 {
   "status": "healthy", 
@@ -131,111 +131,111 @@ Başarılı yanıt:
 }
 ```
 
-### 2. Kontrat Fonksiyonlarını Test Et
+### 2. Test Contract Functions
 ```bash
-# Kontrat bilgilerini görüntüle
+# Display contract information
 soroban contract inspect \
   --id CABC123...XYZ789 \
   --network devnet
 ```
 
-## 🌐 Network Karşılaştırması
+## 🌐 Network Comparison
 
-| Özellik | Devnet | Testnet | Mainnet |
+| Feature | Devnet | Testnet | Mainnet |
 |---------|--------|---------|---------|
-| **Hız** | En hızlı | Orta | En yavaş |
-| **Stabilite** | Düşük (reset) | Yüksek | En yüksek |
-| **Maliyet** | Ücretsiz | Ücretsiz | Ücretli |
-| **Kullanım** | Development | Testing | Production |
-| **XLM Alma** | Friendbot | Friendbot | Satın alma |
+| **Speed** | Fastest | Medium | Slowest |
+| **Stability** | Low (reset) | High | Highest |
+| **Cost** | Free | Free | Paid |
+| **Usage** | Development | Testing | Production |
+| **XLM Source** | Friendbot | Friendbot | Purchase |
 
-## 🔄 Network Değiştirme
+## 🔄 Network Switching
 
-### Testnet'e Geçiş
+### Switch to Testnet
 ```env
 LAUNCHTUBE_NETWORK="testnet"
 NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
 RPC_URL="https://soroban-testnet.stellar.org:443"
 ```
 
-### Mainnet'e Geçiş
+### Switch to Mainnet
 ```env
 LAUNCHTUBE_NETWORK="mainnet"
 NETWORK_PASSPHRASE="Public Global Stellar Network ; September 2015"
 RPC_URL="https://soroban-mainnet.stellar.org:443"
 ```
 
-## ⚠️ Devnet Uyarıları
+## ⚠️ Devnet Warnings
 
 ### 1. Data Persistence
-- Devnet **periyodik olarak sıfırlanır**
-- Verileriniz kaybolabilir
-- Production verisi saklamayın
+- Devnet **resets periodically**
+- Your data may be lost
+- Don't store production data
 
 ### 2. Performance
-- Daha yavaş olabilir
-- Eksperimental özellikler test edilir
-- Kararsızlık yaşanabilir
+- May be slower
+- Experimental features are tested
+- Instability may occur
 
 ### 3. Contract Lifecycle
-- Kontratlar silinebilir
-- Düzenli backup alın
-- Test verisi kullanın
+- Contracts may be deleted
+- Take regular backups
+- Use test data
 
-## 🚀 Production'a Geçiş
+## 🚀 Moving to Production
 
-Geliştirme tamamlandığında:
+When development is complete:
 
-1. **Testnet'e deploy edin** (son testler)
-2. **Mainnet'e deploy edin** (production)
-3. **DNS ve domain ayarları** yapın
-4. **Monitoring ve logging** aktif edin
-5. **Backup stratejisi** oluşturun
+1. **Deploy to testnet** (final tests)
+2. **Deploy to mainnet** (production)
+3. **Configure DNS and domain** settings
+4. **Enable monitoring and logging**
+5. **Create backup strategy**
 
 ## 🔍 Debugging
 
-### Log Kontrolü
+### Log Check
 ```bash
-# Backend logları
+# Backend logs
 tail -f logs/vireca.log
 
-# Stellar network durumu
+# Stellar network status
 soroban network status --network devnet
 ```
 
 ### Contract Events
 ```bash
-# Contract event'lerini takip et
+# Monitor contract events
 soroban events --start-ledger latest --network devnet
 ```
 
-## 📞 Destek
+## 📞 Support
 
-Sorun yaşamanız durumunda:
+If you encounter issues:
 
 - **Launchtube Discord**: https://discord.gg/launchtube
 - **Stellar Discord**: https://discord.gg/stellardev
-- **GitHub Issues**: Repository issues bölümü
+- **GitHub Issues**: Repository issues section
 
 ## ✅ Checklist
 
-Deploy öncesi kontrol listesi:
+Pre-deployment checklist:
 
-- [ ] Soroban CLI kuruldu
-- [ ] Stellar cüzdan oluşturuldu
-- [ ] Devnet XLM alındı
-- [ ] Kontrat derlendi
-- [ ] Network yapılandırıldı
-- [ ] Environment ayarlandı
-- [ ] Backend test edildi
-- [ ] API endpoint'leri çalıştı
+- [ ] Soroban CLI installed
+- [ ] Stellar wallet created
+- [ ] Devnet XLM obtained
+- [ ] Contract compiled
+- [ ] Network configured
+- [ ] Environment set up
+- [ ] Backend tested
+- [ ] API endpoints working
 
-## 🎯 Sonuç
+## 🎯 Conclusion
 
-Devnet kullanarak:
-- ✅ Hızlı geliştirme yapabilirsiniz
-- ✅ Ücretsiz test edebilirsiniz  
-- ✅ Yeni özellikler deneyebilirsiniz
-- ✅ Launchtube entegrasyonunu test edebilirsiniz
+Using Devnet allows you to:
+- ✅ Develop rapidly
+- ✅ Test for free  
+- ✅ Try new features
+- ✅ Test Launchtube integration
 
-**Başarılı deploy'lar! 🚀** 
+**Happy deployments! 🚀** 
