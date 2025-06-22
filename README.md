@@ -57,6 +57,14 @@ This creates a **win-win-win** cycle where patients gain free access and data co
 * ✅ Smart Contract successfully deployed on Testnet (via Launchtube).
 * ✅ Functional prototype for Passkey-based login is complete.
 
+### 🌐 Live Testnet Deployment
+
+The Vireca protocol is now live on Stellar Testnet and ready for testing:
+
+* **Contract Explorer:** https://stellar.expert/explorer/testnet/contract/CBC2CE2FO4G3S5XYHJ2NVY3FHGS477O3DOFLMMRDIYVYGMO7S2JEDWZY
+* **Deployment Transaction:** https://stellar.expert/explorer/testnet/tx/abcc92188293908fc494311b5726810d702d8a53685c55be1cdcf0aa5b45c9fd
+* **Full Deployment Report:** [TESTNET_DEPLOYMENT.md](TESTNET_DEPLOYMENT.md)
+
 ### Roadmap
 
 * [ ] **Mobile App Development:** Native iOS and Android applications for an even better user experience.

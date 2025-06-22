@@ -4,7 +4,7 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN, Env,
 };
 
-// --- HATA TİPLERİ ---
+// --- ERROR TYPES ---
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
@@ -22,7 +22,7 @@ impl From<Error> for soroban_sdk::Error {
     }
 }
 
-// --- VERİ YAPILARI ---
+// --- DATA STRUCTURES ---
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DataRecord {
@@ -40,11 +40,11 @@ pub struct Permission {
     pub expiration_ledger: u32,
 }
 
-// --- KONTRAKT ---
+// --- CONTRACT ---
 #[contract]
 pub struct VirecaContract;
 
-// --- KONTRAKT FONKSİYONLARI ---
+// --- CONTRACT FUNCTIONS ---
 #[contractimpl]
 impl VirecaContract {
     pub fn register_data(
